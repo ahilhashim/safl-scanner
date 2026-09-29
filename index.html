@@ -148,6 +148,49 @@
       text-align: center;
       margin-top: 12px;
     }
+
+    .sectionTitle {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 10px;
+      text-align: center;
+    }
+
+    #searchResults {
+      margin-top: 12px;
+    }
+
+    .playerResult {
+      background: #222;
+      border: 1px solid #3a3a3a;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 10px;
+    }
+
+    .playerResultName {
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .playerMeta {
+      color: #bbb;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-top: 5px;
+    }
+
+    .checkedBtn {
+      background: #333;
+      color: #aaa;
+    }
+
+    #searchMsg {
+      text-align: center;
+      color: #aaa;
+      margin-top: 10px;
+      font-size: 14px;
+    }
   </style>
 </head>
 
@@ -160,9 +203,6 @@
     <div class="subtitle">
       Staff Check-In Scanner
     </div>
-
-
-    <!-- STAFF LOGIN -->
 
     <div
       id="loginPane"
@@ -185,9 +225,6 @@
 
     </div>
 
-
-    <!-- SCANNER -->
-
     <div
       id="scannerPane"
       class="card"
@@ -206,6 +243,31 @@
       <div id="result"></div>
 
       <hr>
+
+      <div class="sectionTitle">
+        Search Player
+      </div>
+
+      <input
+        id="playerSearch"
+        placeholder="Player ID, first name, or last name"
+        autocomplete="off"
+        autocapitalize="words"
+      >
+
+      <button id="searchBtn">
+        SEARCH PLAYER
+      </button>
+
+      <div id="searchMsg"></div>
+
+      <div id="searchResults"></div>
+
+      <hr>
+
+      <div class="sectionTitle">
+        Manual Player ID
+      </div>
 
       <input
         id="manualId"
@@ -227,7 +289,6 @@
     </div>
 
   </div>
-
 
   <script>
 
@@ -265,10 +326,12 @@
           );
 
         if (savedPin) {
+
           await authenticate(
             savedPin,
             true
           );
+
         }
 
       }
@@ -276,28 +339,21 @@
 
 
     // =====================================================
-    // LOGIN BUTTON
+    // LOGIN
     // =====================================================
 
     $('loginBtn').addEventListener(
       'click',
       function () {
 
-        const pin =
-          $('pin').value.trim();
-
         authenticate(
-          pin,
+          $('pin').value.trim(),
           false
         );
 
       }
     );
 
-
-    // =====================================================
-    // AUTHENTICATE STAFF
-    // =====================================================
 
     async function authenticate(
       pin,
@@ -371,6 +427,7 @@
           $('loginMsg').textContent =
             'Incorrect PIN or connection error.';
 
+
           $('loginMsg').style.display =
             'block';
 
@@ -395,6 +452,7 @@
 
       const button =
         $('startBtn');
+
 
       const status =
         $('status');
@@ -462,9 +520,7 @@
 
           onScan,
 
-          function () {
-            // Keep scanning.
-          }
+          function () {}
 
         );
 
@@ -564,7 +620,7 @@
 
 
     // =====================================================
-    // EXTRACT PLAYER ID FROM QR
+    // EXTRACT PLAYER ID
     // =====================================================
 
     function extractPlayerId(
@@ -623,12 +679,329 @@
 
       }
 
-      catch (error) {
-        // Not a URL.
-      }
+      catch (error) {}
 
 
       return '';
+
+    }
+
+
+    // =====================================================
+    // PLAYER SEARCH
+    // =====================================================
+
+    $('searchBtn').addEventListener(
+      'click',
+      searchPlayers
+    );
+
+
+    $('playerSearch').addEventListener(
+      'keydown',
+      function (event) {
+
+        if (
+          event.key === 'Enter'
+        ) {
+
+          event.preventDefault();
+
+          searchPlayers();
+
+        }
+
+      }
+    );
+
+
+    async function searchPlayers() {
+
+      const query =
+        $('playerSearch')
+          .value
+          .trim();
+
+
+      $('searchResults').innerHTML =
+        '';
+
+
+      $('searchMsg').textContent =
+        '';
+
+
+      if (!query) {
+
+        $('searchMsg').textContent =
+          'Enter a Player ID, first name, or last name.';
+
+        return;
+
+      }
+
+
+      $('searchBtn').disabled =
+        true;
+
+
+      $('searchBtn').textContent =
+        'SEARCHING...';
+
+
+      try {
+
+        const response =
+          await fetch(
+
+            APP_URL +
+
+            '?api=search' +
+
+            '&q=' +
+
+            encodeURIComponent(
+              query
+            ) +
+
+            '&pin=' +
+
+            encodeURIComponent(
+              staffPin
+            )
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          data.unauthorized
+        ) {
+
+          localStorage.removeItem(
+            'safl_staff_pin'
+          );
+
+
+          showResult(
+
+            'Staff authorization failed. Please log in again.',
+
+            'error'
+
+          );
+
+
+          setTimeout(
+
+            function () {
+
+              location.reload();
+
+            },
+
+            1200
+
+          );
+
+
+          return;
+
+        }
+
+
+        const results =
+
+          Array.isArray(
+            data.results
+          )
+
+            ? data.results
+
+            : [];
+
+
+        if (
+          results.length === 0
+        ) {
+
+          $('searchMsg').textContent =
+            'No matching players found.';
+
+          return;
+
+        }
+
+
+        $('searchMsg').textContent =
+
+          results.length +
+
+          (
+            results.length === 1
+
+              ? ' player found'
+
+              : ' players found'
+          );
+
+
+        $('searchResults').innerHTML =
+
+          results
+
+            .map(
+
+              function (player) {
+
+                const checked =
+
+                  String(
+                    player.status || ''
+                  ).toLowerCase() ===
+                  'checked in';
+
+
+                return (
+
+                  '<div class="playerResult">' +
+
+
+                    '<div class="playerResultName">' +
+
+                      escapeHtml(
+                        player.name
+                      ) +
+
+                    '</div>' +
+
+
+                    '<div class="playerMeta">' +
+
+                      escapeHtml(
+                        player.playerId
+                      ) +
+
+                      '<br>' +
+
+                      'Payment: ' +
+
+                      escapeHtml(
+
+                        player.payment ||
+
+                        'Not listed'
+
+                      ) +
+
+                      '<br>' +
+
+                      'Status: ' +
+
+                      escapeHtml(
+
+                        player.status ||
+
+                        'Not Checked In'
+
+                      ) +
+
+                    '</div>' +
+
+
+                    '<button ' +
+
+                      'class="' +
+
+                      (
+                        checked
+
+                          ? 'checkedBtn'
+
+                          : ''
+                      ) +
+
+                      '" ' +
+
+                      (
+                        checked
+
+                          ? 'disabled '
+
+                          : ''
+                      ) +
+
+                      'onclick="checkInFromSearch(\'' +
+
+                      escapeJs(
+                        player.playerId
+                      ) +
+
+                      '\')">' +
+
+                      (
+                        checked
+
+                          ? 'ALREADY CHECKED IN'
+
+                          : 'CHECK IN PLAYER'
+                      ) +
+
+                    '</button>' +
+
+
+                  '</div>'
+
+                );
+
+              }
+
+            )
+
+            .join('');
+
+      }
+
+      catch (error) {
+
+        $('searchMsg').textContent =
+          'Unable to search players.';
+
+      }
+
+      finally {
+
+        $('searchBtn').disabled =
+          false;
+
+
+        $('searchBtn').textContent =
+          'SEARCH PLAYER';
+
+      }
+
+    }
+
+
+    async function checkInFromSearch(
+      playerId
+    ) {
+
+      await checkInPlayer(
+        playerId
+      );
+
+
+      setTimeout(
+
+        searchPlayers,
+
+        500
+
+      );
 
     }
 
@@ -733,17 +1106,6 @@
             'Staff authorization failed. Please log in again.',
 
             'error'
-
-          );
-
-
-          setTimeout(
-
-            function () {
-              location.reload();
-            },
-
-            1200
 
           );
 
@@ -858,7 +1220,7 @@
 
         showResult(
 
-          'Unable to check in player. Connection to Google Apps Script failed.',
+          'Unable to check in player.',
 
           'error'
 
@@ -934,7 +1296,9 @@
         try {
 
           if (scanner) {
+
             await scanner.stop();
+
           }
 
         }
@@ -949,7 +1313,7 @@
 
 
     // =====================================================
-    // ESCAPE HTML
+    // ESCAPING
     // =====================================================
 
     function escapeHtml(
@@ -983,6 +1347,27 @@
         .replace(
           /'/g,
           '&#039;'
+        );
+
+    }
+
+
+    function escapeJs(
+      value
+    ) {
+
+      return String(
+        value || ''
+      )
+
+        .replace(
+          /\\/g,
+          '\\\\'
+        )
+
+        .replace(
+          /'/g,
+          "\\'"
         );
 
     }
