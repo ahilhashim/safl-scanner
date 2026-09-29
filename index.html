@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+  >
+
+  <title>SAFL Staff Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #0d0d0d;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 20px 0 4px;
+      font-size: 42px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #aaa;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #181818;
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    input,
+    button {
+      width: 100%;
+      border-radius: 10px;
+      padding: 15px;
+      font-size: 18px;
+    }
+
+    input {
+      border: 1px solid #444;
+      background: #222;
+      color: #fff;
+      text-align: center;
+    }
+
+    button {
+      border: 0;
+      background: #fff;
+      color: #000;
+      font-weight: 700;
+      margin-top: 12px;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #333;
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+    }
+
+    #scannerPane {
+      display: none;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 14px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #status {
+      margin-top: 12px;
+      text-align: center;
+      color: #aaa;
+      line-height: 1.4;
+    }
+
+    #result {
+      display: none;
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .success {
+      background: #123d21;
+      border: 1px solid #25a04a;
+    }
+
+    .warning {
+      background: #47360d;
+      border: 1px solid #d39c18;
+    }
+
+    .error {
+      background: #491919;
+      border: 1px solid #c84242;
+    }
+
+    .name {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .small {
+      font-size: 14px;
+      opacity: 0.85;
+    }
+
+    hr {
+      border: 0;
+      border-top: 1px solid #333;
+      margin: 20px 0;
+    }
+
+    #loginMsg {
+      display: none;
+      color: #ff7777;
+      text-align: center;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="wrap">
+
+    <h1>SAFL</h1>
+
+    <div class="subtitle">
+      Staff Check-In Scanner
+    </div>
+
+
+    <!-- STAFF LOGIN -->
+
+    <div
+      id="loginPane"
+      class="card"
+    >
+
+      <input
+        id="pin"
+        type="password"
+        inputmode="numeric"
+        maxlength="4"
+        placeholder="Staff PIN"
+      >
+
+      <button id="loginBtn">
+        CONTINUE
+      </button>
+
+      <div id="loginMsg"></div>
+
+    </div>
+
+
+    <!-- SCANNER -->
+
+    <div
+      id="scannerPane"
+      class="card"
+    >
+
+      <button id="startBtn">
+        START CAMERA
+      </button>
+
+      <div id="status">
+        Tap Start Camera to begin scanning.
+      </div>
+
+      <div id="reader"></div>
+
+      <div id="result"></div>
+
+      <hr>
+
+      <input
+        id="manualId"
+        placeholder="SAFL26-0001"
+        autocapitalize="characters"
+      >
+
+      <button id="manualBtn">
+        CHECK IN PLAYER
+      </button>
+
+      <button
+        id="logoutBtn"
+        class="secondary"
+      >
+        LOG OUT STAFF DEVICE
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <script>
+
+    const APP_URL =
+      'https://script.google.com/macros/s/AKfycbwWDxB82-rXMd6BC7L1lZ63Fp3Og-YKlBmJhBXRKwfRuFDU84vmA5jXI6Xa3Ef5PcEI/exec';
+
+
+    let staffPin = '';
+
+    let scanner = null;
+
+    let processing = false;
+
+    let lastId = '';
+
+    let lastScanTime = 0;
+
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+
+    // =====================================================
+    // LOAD SAVED STAFF LOGIN
+    // =====================================================
+
+    window.addEventListener(
+      'load',
+      async function () {
+
+        const savedPin =
+          localStorage.getItem(
+            'safl_staff_pin'
+          );
+
+        if (savedPin) {
+          await authenticate(
+            savedPin,
+            true
+          );
+        }
+
+      }
+    );
+
+
+    // =====================================================
+    // LOGIN BUTTON
+    // =====================================================
+
+    $('loginBtn').addEventListener(
+      'click',
+      function () {
+
+        const pin =
+          $('pin').value.trim();
+
+        authenticate(
+          pin,
+          false
+        );
+
+      }
+    );
+
+
+    // =====================================================
+    // AUTHENTICATE STAFF
+    // =====================================================
+
+    async function authenticate(
+      pin,
+      silent
+    ) {
+
+      $('loginMsg').style.display =
+        'none';
+
+
+      try {
+
+        const response =
+          await fetch(
+
+            APP_URL +
+
+            '?api=auth&pin=' +
+
+            encodeURIComponent(
+              pin
+            )
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (!data.success) {
+
+          throw new Error(
+            'Invalid PIN'
+          );
+
+        }
+
+
+        staffPin =
+          pin;
+
+
+        localStorage.setItem(
+
+          'safl_staff_pin',
+
+          pin
+
+        );
+
+
+        $('loginPane').style.display =
+          'none';
+
+
+        $('scannerPane').style.display =
+          'block';
+
+      }
+
+      catch (error) {
+
+        localStorage.removeItem(
+          'safl_staff_pin'
+        );
+
+
+        if (!silent) {
+
+          $('loginMsg').textContent =
+            'Incorrect PIN or connection error.';
+
+          $('loginMsg').style.display =
+            'block';
+
+        }
+
+      }
+
+    }
+
+
+    // =====================================================
+    // START CAMERA
+    // =====================================================
+
+    $('startBtn').addEventListener(
+      'click',
+      startCamera
+    );
+
+
+    async function startCamera() {
+
+      const button =
+        $('startBtn');
+
+      const status =
+        $('status');
+
+
+      button.disabled =
+        true;
+
+
+      button.textContent =
+        'STARTING CAMERA...';
+
+
+      status.textContent =
+        'Requesting camera access...';
+
+
+      try {
+
+        scanner =
+          scanner ||
+          new Html5Qrcode(
+            'reader'
+          );
+
+
+        await scanner.start(
+
+          {
+            facingMode:
+              'environment'
+          },
+
+          {
+
+            fps: 10,
+
+            qrbox: function (
+              width,
+              height
+            ) {
+
+              const size =
+                Math.floor(
+
+                  Math.min(
+                    width,
+                    height
+                  ) * 0.72
+
+                );
+
+
+              return {
+
+                width: size,
+
+                height: size
+
+              };
+
+            }
+
+          },
+
+          onScan,
+
+          function () {
+            // Keep scanning.
+          }
+
+        );
+
+
+        button.style.display =
+          'none';
+
+
+        status.textContent =
+          'Camera ready — scan a player QR code.';
+
+      }
+
+      catch (error) {
+
+        button.disabled =
+          false;
+
+
+        button.textContent =
+          'TRY CAMERA AGAIN';
+
+
+        status.textContent =
+
+          'Camera could not start: ' +
+
+          (
+            error &&
+            error.message
+
+              ? error.message
+
+              : String(error)
+          );
+
+      }
+
+    }
+
+
+    // =====================================================
+    // QR SCANNED
+    // =====================================================
+
+    function onScan(
+      decodedText
+    ) {
+
+      if (processing) {
+        return;
+      }
+
+
+      const playerId =
+        extractPlayerId(
+          decodedText
+        );
+
+
+      if (!playerId) {
+        return;
+      }
+
+
+      const now =
+        Date.now();
+
+
+      if (
+
+        playerId === lastId &&
+
+        now - lastScanTime <
+        4000
+
+      ) {
+
+        return;
+
+      }
+
+
+      lastId =
+        playerId;
+
+
+      lastScanTime =
+        now;
+
+
+      checkInPlayer(
+        playerId
+      );
+
+    }
+
+
+    // =====================================================
+    // EXTRACT PLAYER ID FROM QR
+    // =====================================================
+
+    function extractPlayerId(
+      text
+    ) {
+
+      text =
+        String(
+          text || ''
+        ).trim();
+
+
+      const match =
+        text.match(
+
+          /SAFL26-[0-9]{4,}/i
+
+        );
+
+
+      if (match) {
+
+        return match[0]
+          .toUpperCase();
+
+      }
+
+
+      try {
+
+        const url =
+          new URL(
+            text
+          );
+
+
+        const id =
+          url.searchParams.get(
+            'id'
+          );
+
+
+        if (
+
+          id &&
+
+          /^SAFL26-[0-9]+$/i
+            .test(id)
+
+        ) {
+
+          return id
+            .toUpperCase();
+
+        }
+
+      }
+
+      catch (error) {
+        // Not a URL.
+      }
+
+
+      return '';
+
+    }
+
+
+    // =====================================================
+    // MANUAL CHECK-IN
+    // =====================================================
+
+    $('manualBtn').addEventListener(
+      'click',
+      function () {
+
+        const playerId =
+          extractPlayerId(
+            $('manualId').value
+          );
+
+
+        if (!playerId) {
+
+          showResult(
+
+            'Enter a valid Player ID such as SAFL26-0001.',
+
+            'error'
+
+          );
+
+          return;
+
+        }
+
+
+        $('manualId').value =
+          '';
+
+
+        checkInPlayer(
+          playerId
+        );
+
+      }
+    );
+
+
+    // =====================================================
+    // CHECK PLAYER IN
+    // =====================================================
+
+    async function checkInPlayer(
+      playerId
+    ) {
+
+      if (processing) {
+        return;
+      }
+
+
+      processing =
+        true;
+
+
+      try {
+
+        const response =
+          await fetch(
+
+            APP_URL +
+
+            '?api=checkin' +
+
+            '&id=' +
+
+            encodeURIComponent(
+              playerId
+            ) +
+
+            '&pin=' +
+
+            encodeURIComponent(
+              staffPin
+            )
+
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          data.unauthorized
+        ) {
+
+          localStorage.removeItem(
+            'safl_staff_pin'
+          );
+
+
+          showResult(
+
+            'Staff authorization failed. Please log in again.',
+
+            'error'
+
+          );
+
+
+          setTimeout(
+
+            function () {
+              location.reload();
+            },
+
+            1200
+
+          );
+
+
+          return;
+
+        }
+
+
+        if (
+          data.alreadyCheckedIn
+        ) {
+
+          showResult(
+
+            '<div class="name">' +
+
+              escapeHtml(
+                data.name
+              ) +
+
+            '</div>' +
+
+            'Already Checked In' +
+
+            '<div class="small">' +
+
+              escapeHtml(
+                data.playerId
+              ) +
+
+            '</div>',
+
+            'warning'
+
+          );
+
+        }
+
+
+        else if (
+          data.success
+        ) {
+
+          showResult(
+
+            '<div class="name">' +
+
+              '✓ ' +
+
+              escapeHtml(
+                data.name
+              ) +
+
+            '</div>' +
+
+            'CHECKED IN' +
+
+            '<div class="small">' +
+
+              escapeHtml(
+                data.playerId
+              ) +
+
+              '<br>' +
+
+              'Payment: ' +
+
+              escapeHtml(
+
+                data.payment ||
+
+                'Not listed'
+
+              ) +
+
+            '</div>',
+
+            'success'
+
+          );
+
+
+          if (
+            navigator.vibrate
+          ) {
+
+            navigator.vibrate(
+              100
+            );
+
+          }
+
+        }
+
+
+        else {
+
+          showResult(
+
+            'Player not found.',
+
+            'error'
+
+          );
+
+        }
+
+      }
+
+      catch (error) {
+
+        showResult(
+
+          'Unable to check in player. Connection to Google Apps Script failed.',
+
+          'error'
+
+        );
+
+      }
+
+
+      setTimeout(
+
+        function () {
+
+          processing =
+            false;
+
+
+          $('result').style.display =
+            'none';
+
+        },
+
+        1600
+
+      );
+
+    }
+
+
+    // =====================================================
+    // RESULT DISPLAY
+    // =====================================================
+
+    function showResult(
+      message,
+      type
+    ) {
+
+      const box =
+        $('result');
+
+
+      box.className =
+        type;
+
+
+      box.innerHTML =
+        message;
+
+
+      box.style.display =
+        'block';
+
+    }
+
+
+    // =====================================================
+    // LOG OUT
+    // =====================================================
+
+    $('logoutBtn').addEventListener(
+      'click',
+      async function () {
+
+        localStorage.removeItem(
+          'safl_staff_pin'
+        );
+
+
+        staffPin =
+          '';
+
+
+        try {
+
+          if (scanner) {
+            await scanner.stop();
+          }
+
+        }
+
+        catch (error) {}
+
+
+        location.reload();
+
+      }
+    );
+
+
+    // =====================================================
+    // ESCAPE HTML
+    // =====================================================
+
+    function escapeHtml(
+      value
+    ) {
+
+      return String(
+        value || ''
+      )
+
+        .replace(
+          /&/g,
+          '&amp;'
+        )
+
+        .replace(
+          /</g,
+          '&lt;'
+        )
+
+        .replace(
+          />/g,
+          '&gt;'
+        )
+
+        .replace(
+          /"/g,
+          '&quot;'
+        )
+
+        .replace(
+          /'/g,
+          '&#039;'
+        );
+
+    }
+
+  </script>
+
+</body>
+
+</html>
